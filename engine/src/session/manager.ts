@@ -1,6 +1,7 @@
 import { isAllowedDomain, type EngineConfig } from '../config.js';
 import type { AuditLogger } from '../audit/log.js';
 import { AutonomousMemory } from '../memory/autonomous-memory.js';
+import { MemoryAutomationService } from '../memory/memory-automation-service.js';
 import { isMutatingCommand, type BrowserCommand } from '../protocol/commands.js';
 import type { ExtensionToEngineEvent, EngineToExtensionEvent } from '../protocol/events.js';
 import type { BrowserAgentStore, CommandApprovalSource, CommandRecord, SessionRecord } from './store.js';
@@ -33,6 +34,7 @@ function ensureActiveSession(store: BrowserAgentStore, sessionId: string): Sessi
 export class SessionManager {
   private inFlightCommandId: string | null = null;
   private readonly memory: AutonomousMemory;
+  private readonly memoryAutomation: MemoryAutomationService;
 
   public constructor(
     private readonly config: EngineConfig,
@@ -42,6 +44,7 @@ export class SessionManager {
     private readonly secrets: SecretProvider,
   ) {
     this.memory = new AutonomousMemory(this.store);
+    this.memoryAutomation = new MemoryAutomationService(this.store);
   }
 
   public startSession(createdBy: string): SessionRecord {
@@ -74,13 +77,51 @@ export class SessionManager {
   ): EnqueueResult {
     const session = ensureActiveSession(this.store, sessionId);
     this.assertCommandDomainEligibility(command);
+    const extensionState = this.store.getLatestExtensionState();
+    const activeTabUrl = extensionState?.activeTabUrl ?? null;
+    const hasValidConfirmation = confirmationToken === session.confirmationToken;
+    const policyDecision = this.memoryAutomation.evaluateCommandPolicy({
+      sessionId,
+      command,
+      activeTabUrl,
+      confirmationProvided: hasValidConfirmation,
+    });
+    const decayedCards = this.memoryAutomation.decayStaleMemory();
+    if (decayedCards > 0) {
+      this.audit.record('memory.decayed', 'Stale memory cards decayed', {
+        count: decayedCards,
+      });
+    }
+
+    if (policyDecision.blocked) {
+      const blocked = this.store.insertCommand({
+        sessionId,
+        command,
+        requiresConfirmation: true,
+        approvalSource: 'awaiting_confirmation',
+        status: 'awaiting_confirmation',
+      });
+
+      this.audit.record('command.blocked_policy', 'Command blocked by memory policy gate', {
+        sessionId,
+        commandId: blocked.id,
+        commandType: command.type,
+        reason: policyDecision.reason,
+        relatedCards: policyDecision.relatedCards.slice(0, 3).map((card) => card.id),
+      });
+
+      return {
+        command: blocked,
+        blocked: true,
+        reason: `Command requires confirmation (${policyDecision.reason}).`,
+      };
+    }
 
     const isMutating = isMutatingCommand(command);
     let approvalSource: CommandApprovalSource = isMutating ? 'user_confirmation' : 'none';
 
-    if (isMutating && confirmationToken !== session.confirmationToken) {
-      const extensionState = this.store.getLatestExtensionState();
-      const memoryDecision = this.memory.tryAutoApprove(command, extensionState?.activeTabUrl ?? null);
+    if (isMutating && !hasValidConfirmation) {
+      const memoryDecision = this.memory.tryAutoApprove(command, activeTabUrl);
       if (memoryDecision.approved) {
         approvalSource = 'memory_auto_approve';
       } else {
@@ -97,6 +138,7 @@ export class SessionManager {
           commandId: blocked.id,
           commandType: command.type,
           memoryReason: memoryDecision.reason,
+          policyReason: policyDecision.reason,
         });
 
         return {
@@ -242,6 +284,13 @@ export class SessionManager {
 
     if (command) {
       this.memory.recordCommandOutcome({
+        command: command.payload,
+        activeTabUrl: extensionState?.activeTabUrl ?? null,
+        success: status === 'success',
+        approvalSource: command.approvalSource,
+      });
+      this.memoryAutomation.captureCommandOutcome({
+        sessionId: command.sessionId,
         command: command.payload,
         activeTabUrl: extensionState?.activeTabUrl ?? null,
         success: status === 'success',

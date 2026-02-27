@@ -147,6 +147,14 @@ export class AutonomousMemory {
   public constructor(private readonly store: BrowserAgentStore) {}
 
   public tryAutoApprove(command: BrowserCommand, activeTabUrl: string | null): MemoryAutoApproveDecision {
+    if (this.store.getMemorySettings().noStore) {
+      return {
+        approved: false,
+        reason: 'no_store_enabled',
+        rule: null,
+      };
+    }
+
     if (!AUTO_APPROVE_ELIGIBLE_TYPES.has(command.type)) {
       return {
         approved: false,
@@ -213,6 +221,10 @@ export class AutonomousMemory {
     success: boolean;
     approvalSource: CommandApprovalSource;
   }): void {
+    if (this.store.getMemorySettings().noStore) {
+      return;
+    }
+
     if (!TRACKED_COMMAND_TYPES.has(input.command.type)) {
       return;
     }

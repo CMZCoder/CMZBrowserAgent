@@ -3,6 +3,7 @@ import express from 'express';
 import { AuditLogger } from './audit/log.js';
 import { getEngineConfig, type EngineConfig } from './config.js';
 import { registerRoutes } from './http/routes.js';
+import { MemoryAutomationService } from './memory/memory-automation-service.js';
 import { PromptBus } from './prompt/bus.js';
 import { SessionManager } from './session/manager.js';
 import { BrowserAgentStore } from './session/store.js';
@@ -28,7 +29,8 @@ export function createEngineRuntime(config: EngineConfig = getEngineConfig()): E
 
   const store = new BrowserAgentStore(config.dbPath);
   const audit = new AuditLogger(store);
-  const promptBus = new PromptBus(store);
+  const memory = new MemoryAutomationService(store);
+  const promptBus = new PromptBus(store, memory);
   const server = http.createServer(app);
   const wsHub = new WsHub(server, store, audit);
   const secrets = new OnePasswordVault(store);

@@ -59,6 +59,30 @@ const memoryListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).optional(),
 });
 
+const memoryCardsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+  scope: z
+    .enum(['ephemeral_session', 'durable_project', 'durable_operator', 'policy', 'outcome'])
+    .optional(),
+  status: z.enum(['active', 'disabled', 'deleted']).optional(),
+  domain: z.string().trim().min(1).optional(),
+  query: z.string().trim().min(1).max(300).optional(),
+});
+
+const memoryDecisionQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+});
+
+const memoryCardUpdateSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  summary: z.string().trim().min(1).max(8_000).optional(),
+  status: z.enum(['active', 'disabled', 'deleted']).optional(),
+});
+
+const memoryNoStoreSchema = z.object({
+  enabled: z.boolean(),
+});
+
 function parsePromptPullConsume(value: string | undefined): boolean {
   if (!value) {
     return true;
@@ -361,7 +385,11 @@ export function registerRoutes(app: Express, deps: RouteDeps): void {
         ok: true,
         session,
         activeSessionId: deps.store.getActiveSession()?.id ?? null,
-        memory: deps.store.getMemorySummary(),
+        memory: {
+          patterns: deps.store.getMemorySummary(),
+          cards: deps.store.getMemoryCardSummary(),
+          settings: deps.store.getMemorySettings(),
+        },
         extension: {
           primaryExtensionId: deps.wsHub.getPrimaryExtensionId(),
           wsReady: deps.wsHub.hasReadyExtension(),
@@ -417,10 +445,151 @@ export function registerRoutes(app: Express, deps: RouteDeps): void {
 
     try {
       const limit = parsed.data.limit ?? 200;
+      const cards = deps.store.listMemoryCards({ limit, scope: 'policy', status: 'active' });
       response.json({
         ok: true,
         summary: deps.store.getMemorySummary(),
+        health: deps.store.getMemoryCardSummary(),
         patterns: deps.store.listMemoryPatterns(limit),
+        cards: cards.map((card) => ({
+          id: card.id,
+          host: card.domain ?? 'global',
+          commandType: card.intentKey ?? 'policy',
+          successes: card.successCount,
+          failures: card.failureCount,
+          autoApprove: card.reliability >= 0.78 && card.failureCount === 0,
+          reliability: card.reliability,
+          confidence: card.confidence,
+          summary: card.summary,
+          status: card.status,
+        })),
+      });
+    } catch (error) {
+      routeError(response, error);
+    }
+  });
+
+  app.get('/v1/memory/cards', (request, response) => {
+    const parsed = memoryCardsQuerySchema.safeParse(request.query ?? {});
+    if (!parsed.success) {
+      badRequest(response, 'Invalid memory cards request.', parsed.error.issues);
+      return;
+    }
+
+    try {
+      const limit = parsed.data.limit ?? 120;
+      const cards = deps.store.listMemoryCards({
+        limit,
+        scope: parsed.data.scope,
+        status: parsed.data.status,
+        domain: parsed.data.domain,
+        query: parsed.data.query,
+      });
+
+      response.json({
+        ok: true,
+        settings: deps.store.getMemorySettings(),
+        summary: deps.store.getMemoryCardSummary(),
+        cards,
+      });
+    } catch (error) {
+      routeError(response, error);
+    }
+  });
+
+  app.post('/v1/memory/cards/:memoryCardId', (request, response) => {
+    const memoryCardId = request.params.memoryCardId;
+    const parsed = memoryCardUpdateSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      badRequest(response, 'Invalid memory card update request.', parsed.error.issues);
+      return;
+    }
+
+    try {
+      const updated = deps.store.updateMemoryCard({
+        id: memoryCardId,
+        title: parsed.data.title,
+        summary: parsed.data.summary,
+        status: parsed.data.status,
+      });
+
+      if (!updated) {
+        notFound(response, `Memory card '${memoryCardId}' was not found.`);
+        return;
+      }
+
+      deps.audit.record('memory.card_updated', 'Memory card updated', {
+        memoryCardId,
+        status: updated.status,
+      });
+
+      response.json({
+        ok: true,
+        card: updated,
+      });
+    } catch (error) {
+      routeError(response, error);
+    }
+  });
+
+  app.post('/v1/memory/cards/:memoryCardId/delete', (request, response) => {
+    const memoryCardId = request.params.memoryCardId;
+    try {
+      const deleted = deps.store.softDeleteMemoryCard(memoryCardId);
+      if (!deleted) {
+        notFound(response, `Memory card '${memoryCardId}' was not found.`);
+        return;
+      }
+
+      deps.audit.record('memory.card_deleted', 'Memory card deleted', { memoryCardId });
+      response.json({ ok: true, memoryCardId });
+    } catch (error) {
+      routeError(response, error);
+    }
+  });
+
+  app.get('/v1/memory/decisions', (request, response) => {
+    const parsed = memoryDecisionQuerySchema.safeParse(request.query ?? {});
+    if (!parsed.success) {
+      badRequest(response, 'Invalid memory decision list request.', parsed.error.issues);
+      return;
+    }
+
+    try {
+      const limit = parsed.data.limit ?? 120;
+      response.json({
+        ok: true,
+        decisions: deps.store.listMemoryDecisions(limit),
+      });
+    } catch (error) {
+      routeError(response, error);
+    }
+  });
+
+  app.get('/v1/memory/settings', (_request, response) => {
+    try {
+      response.json({
+        ok: true,
+        settings: deps.store.getMemorySettings(),
+      });
+    } catch (error) {
+      routeError(response, error);
+    }
+  });
+
+  app.post('/v1/memory/settings/no-store', (request, response) => {
+    const parsed = memoryNoStoreSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      badRequest(response, 'Invalid memory no-store request.', parsed.error.issues);
+      return;
+    }
+
+    try {
+      const settings = deps.store.setMemoryNoStore(parsed.data.enabled);
+      deps.audit.record('memory.no_store_set', 'Memory no-store mode updated', settings);
+      response.json({
+        ok: true,
+        settings,
       });
     } catch (error) {
       routeError(response, error);
@@ -429,8 +598,8 @@ export function registerRoutes(app: Express, deps: RouteDeps): void {
 
   app.post('/v1/memory/patterns/reset', (_request, response) => {
     try {
-      const deleted = deps.store.clearMemoryPatterns();
-      deps.audit.record('memory.reset', 'Autonomous memory patterns cleared', { deleted });
+      const deleted = deps.store.clearMemoryAutomation();
+      deps.audit.record('memory.reset', 'Autonomous memory cleared', deleted);
       response.json({
         ok: true,
         deleted,

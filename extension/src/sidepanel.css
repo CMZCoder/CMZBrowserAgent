@@ -93,6 +93,14 @@ h2 {
   font-size: 12px;
 }
 
+.subheading {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .advanced summary {
   cursor: pointer;
   font-weight: 600;
@@ -109,6 +117,18 @@ label {
   gap: 4px;
   font-size: 12px;
   color: var(--muted);
+}
+
+.inline-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.inline-toggle input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
 }
 
 input,
@@ -255,6 +275,11 @@ button.secondary:hover {
 .feed-item-memory {
   background: #f3f9ff;
   border: 1px solid #cde0ff;
+}
+
+.feed-item-decision {
+  background: #fff8ea;
+  border: 1px solid #f0d6a2;
 }
 
 .feed-meta {

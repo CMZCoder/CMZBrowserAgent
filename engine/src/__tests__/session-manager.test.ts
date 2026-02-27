@@ -153,6 +153,21 @@ describe('SessionManager', () => {
     store.close();
   });
 
+  it('blocks high-risk evaluate command without confirmation even when session is active', () => {
+    const { manager, store } = makeManager();
+    const session = manager.startSession('test-cli');
+
+    const result = manager.enqueueCommand(session.id, {
+      type: 'evaluate',
+      script: '() => document.cookie',
+    });
+
+    expect(result.blocked).toBe(true);
+    expect(result.reason).toMatch(/high_risk_requires_confirmation/i);
+
+    store.close();
+  });
+
   it('auto-approves learned click patterns after repeated confirmed successes', () => {
     const { manager, store } = makeManager();
     const session = manager.startSession('test-cli');

@@ -1541,7 +1541,43 @@ async function handleMessage(message: ExtensionMessage): Promise<ExtensionMessag
   if (message.type === 'agent.memory.list') {
     const limitRaw = message.payload?.limit;
     const limit = typeof limitRaw === 'number' && Number.isInteger(limitRaw) && limitRaw > 0 ? limitRaw : 25;
-    const response = await engineRequest('GET', `/v1/memory/patterns?limit=${encodeURIComponent(limit)}`);
+    const cardsResponse = await engineRequest('GET', `/v1/memory/cards?limit=${encodeURIComponent(limit)}`);
+    const decisionsResponse = await engineRequest('GET', `/v1/memory/decisions?limit=${encodeURIComponent(limit)}`);
+    const cards = Array.isArray(cardsResponse.cards) ? cardsResponse.cards : [];
+    const decisions = Array.isArray(decisionsResponse.decisions) ? decisionsResponse.decisions : [];
+    const settings = isRecord(cardsResponse.settings) ? cardsResponse.settings : {};
+    const summary = isRecord(cardsResponse.summary) ? cardsResponse.summary : {};
+    const patterns = Array.isArray(cardsResponse.cards)
+      ? cardsResponse.cards
+          .filter((entry) => isRecord(entry))
+          .map((entry) => ({
+            host: typeof entry.domain === 'string' ? entry.domain : 'global',
+            commandType: typeof entry.intentKey === 'string' ? entry.intentKey : 'policy',
+            successes: typeof entry.successCount === 'number' ? entry.successCount : 0,
+            failures: typeof entry.failureCount === 'number' ? entry.failureCount : 0,
+            autoApprove:
+              typeof entry.reliability === 'number' &&
+              typeof entry.failureCount === 'number' &&
+              entry.reliability >= 0.78 &&
+              entry.failureCount === 0,
+          }))
+      : [];
+
+    const response = {
+      ok: true,
+      cards,
+      decisions,
+      settings,
+      summary,
+      patterns,
+    };
+    return { ok: true, data: response };
+  }
+
+  if (message.type === 'agent.memory.no_store') {
+    const enabled = message.payload?.enabled === true;
+    const response = await engineRequest('POST', '/v1/memory/settings/no-store', { enabled });
+    sendRuntimeNotice('info', enabled ? 'No-store mode enabled.' : 'No-store mode disabled.');
     return { ok: true, data: response };
   }
 

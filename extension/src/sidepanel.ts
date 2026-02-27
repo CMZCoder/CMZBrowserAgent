@@ -32,12 +32,26 @@ interface CommandTimelineEntry {
   readonly error: string | null;
 }
 
-interface MemoryPatternEntry {
-  readonly host: string;
-  readonly commandType: string;
-  readonly successes: number;
-  readonly failures: number;
-  readonly autoApprove: boolean;
+interface MemoryCardEntry {
+  readonly id: string;
+  readonly scope: string;
+  readonly status: string;
+  readonly title: string;
+  readonly summary: string;
+  readonly domain: string | null;
+  readonly intentKey: string | null;
+  readonly confidence: number;
+  readonly reliability: number;
+  readonly successCount: number;
+  readonly failureCount: number;
+}
+
+interface MemoryDecisionEntry {
+  readonly reason: string;
+  readonly decisionType: string;
+  readonly commandType: string | null;
+  readonly host: string | null;
+  readonly createdAt: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -86,6 +100,8 @@ const connectionPill = getElement<HTMLParagraphElement>('connection-pill');
 const promptFeed = getElement<HTMLDivElement>('prompt-feed');
 const commandFeed = getElement<HTMLDivElement>('command-feed');
 const memoryFeed = getElement<HTMLDivElement>('memory-feed');
+const memoryWhyFeed = getElement<HTMLDivElement>('memory-why-feed');
+const memoryHealth = getElement<HTMLParagraphElement>('memory-health');
 const toastHost = getElement<HTMLDivElement>('toast-host');
 const actionCard = getElement<HTMLElement>('action-card');
 const actionRequestText = getElement<HTMLParagraphElement>('action-request-text');
@@ -107,6 +123,7 @@ const actionDoneButton = getElement<HTMLButtonElement>('action-done');
 const actionHelpButton = getElement<HTMLButtonElement>('action-help');
 const memoryRefreshButton = getElement<HTMLButtonElement>('memory-refresh');
 const memoryResetButton = getElement<HTMLButtonElement>('memory-reset');
+const memoryNoStoreToggle = getElement<HTMLInputElement>('memory-no-store');
 const quickSnapshotButton = getElement<HTMLButtonElement>('quick-snapshot');
 const quickDiagnosticsButton = getElement<HTMLButtonElement>('quick-diagnostics');
 const quickFocusButton = getElement<HTMLButtonElement>('quick-focus');
@@ -264,25 +281,63 @@ function parseTimeline(commands: unknown): CommandTimelineEntry[] {
     });
 }
 
-function parseMemoryPatterns(raw: unknown): MemoryPatternEntry[] {
+function parseMemoryCards(raw: unknown): MemoryCardEntry[] {
   if (!Array.isArray(raw)) {
     return [];
   }
 
   return raw
-    .map((entry): MemoryPatternEntry | null => {
+    .map((entry): MemoryCardEntry | null => {
       if (!isRecord(entry)) {
         return null;
       }
-      const host = typeof entry.host === 'string' ? entry.host : 'unknown';
-      const commandType = typeof entry.commandType === 'string' ? entry.commandType : 'unknown';
-      const successes = typeof entry.successes === 'number' ? entry.successes : 0;
-      const failures = typeof entry.failures === 'number' ? entry.failures : 0;
-      const autoApprove = entry.autoApprove === true;
-      return { host, commandType, successes, failures, autoApprove };
+
+      const id = typeof entry.id === 'string' ? entry.id : '';
+      if (!id) {
+        return null;
+      }
+
+      return {
+        id,
+        scope: typeof entry.scope === 'string' ? entry.scope : 'unknown',
+        status: typeof entry.status === 'string' ? entry.status : 'unknown',
+        title: typeof entry.title === 'string' ? entry.title : 'Memory',
+        summary: typeof entry.summary === 'string' ? entry.summary : '',
+        domain: typeof entry.domain === 'string' ? entry.domain : null,
+        intentKey: typeof entry.intentKey === 'string' ? entry.intentKey : null,
+        confidence: typeof entry.confidence === 'number' ? entry.confidence : 0,
+        reliability: typeof entry.reliability === 'number' ? entry.reliability : 0,
+        successCount: typeof entry.successCount === 'number' ? entry.successCount : 0,
+        failureCount: typeof entry.failureCount === 'number' ? entry.failureCount : 0,
+      };
     })
-    .filter((entry): entry is MemoryPatternEntry => entry !== null)
-    .sort((a, b) => b.successes - a.successes);
+    .filter((entry): entry is MemoryCardEntry => entry !== null)
+    .sort((a, b) => b.reliability - a.reliability);
+}
+
+function parseMemoryDecisions(raw: unknown): MemoryDecisionEntry[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw
+    .map((entry): MemoryDecisionEntry | null => {
+      if (!isRecord(entry)) {
+        return null;
+      }
+
+      const reason = typeof entry.reason === 'string' ? entry.reason : '';
+      const decisionType = typeof entry.decisionType === 'string' ? entry.decisionType : 'decision';
+      const commandType = typeof entry.commandType === 'string' ? entry.commandType : null;
+      const host = typeof entry.host === 'string' ? entry.host : null;
+      const createdAt = typeof entry.createdAt === 'string' ? entry.createdAt : '';
+      if (!reason) {
+        return null;
+      }
+      return { reason, decisionType, commandType, host, createdAt };
+    })
+    .filter((entry): entry is MemoryDecisionEntry => entry !== null)
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 }
 
 function summarizeActionRequest(content: string): string | null {
@@ -418,18 +473,48 @@ function renderTimeline(commands: unknown): void {
   commandFeed.innerHTML = rows.join('');
 }
 
-function renderMemory(patterns: readonly MemoryPatternEntry[]): void {
-  if (patterns.length === 0) {
+function renderMemoryCards(cards: readonly MemoryCardEntry[]): void {
+  if (cards.length === 0) {
     memoryFeed.innerHTML = '<p class="feed-empty">No learned patterns.</p>';
     return;
   }
 
-  const rows = patterns.slice(0, 40).map((entry) => {
-    const mode = entry.autoApprove ? 'auto-approve' : 'observe';
-    const score = `ok:${entry.successes} / fail:${entry.failures}`;
-    return `<article class="feed-item feed-item-memory"><div class="feed-meta">${escapeHtml(entry.host)} · ${escapeHtml(entry.commandType)}</div><div>${escapeHtml(score)} · ${escapeHtml(mode)}</div></article>`;
+  const rows = cards.slice(0, 60).map((entry) => {
+    const domain = entry.domain ?? 'global';
+    const score = `conf:${entry.confidence.toFixed(2)} · rel:${entry.reliability.toFixed(2)} · ok:${entry.successCount}/fail:${entry.failureCount}`;
+    const meta = `${entry.scope} · ${domain}${entry.intentKey ? ` · ${entry.intentKey}` : ''} · ${entry.status}`;
+    return `<article class="feed-item feed-item-memory"><div class="feed-meta">${escapeHtml(meta)}</div><div><strong>${escapeHtml(entry.title)}</strong></div><div>${escapeHtml(entry.summary)}</div><div class="feed-meta">${escapeHtml(score)}</div></article>`;
   });
   memoryFeed.innerHTML = rows.join('');
+}
+
+function renderMemoryDecisions(decisions: readonly MemoryDecisionEntry[]): void {
+  if (decisions.length === 0) {
+    memoryWhyFeed.innerHTML = '<p class="feed-empty">No memory decisions yet.</p>';
+    return;
+  }
+
+  const rows = decisions.slice(0, 40).map((entry) => {
+    const when = entry.createdAt ? new Date(entry.createdAt).toLocaleTimeString() : 'unknown-time';
+    const meta = `${entry.decisionType}${entry.commandType ? ` · ${entry.commandType}` : ''}${entry.host ? ` · ${entry.host}` : ''} · ${when}`;
+    return `<article class="feed-item feed-item-decision"><div class="feed-meta">${escapeHtml(meta)}</div><div>${escapeHtml(entry.reason)}</div></article>`;
+  });
+  memoryWhyFeed.innerHTML = rows.join('');
+}
+
+function renderMemoryHealth(summaryRaw: unknown, settingsRaw: unknown): void {
+  const summary = isRecord(summaryRaw) ? summaryRaw : {};
+  const settings = isRecord(settingsRaw) ? settingsRaw : {};
+  const totalCards = typeof summary.totalCards === 'number' ? summary.totalCards : 0;
+  const activeCards = typeof summary.activeCards === 'number' ? summary.activeCards : 0;
+  const policyCards = typeof summary.policyCards === 'number' ? summary.policyCards : 0;
+  const outcomeCards = typeof summary.outcomeCards === 'number' ? summary.outcomeCards : 0;
+  const disabledCards = typeof summary.disabledCards === 'number' ? summary.disabledCards : 0;
+  const noStore = settings.noStore === true;
+
+  memoryNoStoreToggle.checked = noStore;
+  memoryHealth.textContent =
+    `Health: ${activeCards}/${totalCards} active · policy:${policyCards} · outcome:${outcomeCards} · disabled:${disabledCards}${noStore ? ' · no-store ON' : ''}`;
 }
 
 function updateHeader(runtime: RuntimeState): void {
@@ -465,17 +550,25 @@ async function refreshMemoryLab(): Promise<void> {
   try {
     const response = await sendMessage('agent.memory.list', { limit: 30 });
     if (!response.ok) {
-      renderMemory([]);
+      renderMemoryHealth({}, {});
+      renderMemoryCards([]);
+      renderMemoryDecisions([]);
       return;
     }
     if (!isRecord(response.data)) {
-      renderMemory([]);
+      renderMemoryHealth({}, {});
+      renderMemoryCards([]);
+      renderMemoryDecisions([]);
       return;
     }
-    const patterns = parseMemoryPatterns(response.data.patterns);
-    renderMemory(patterns);
+
+    renderMemoryHealth(response.data.summary, response.data.settings);
+    renderMemoryCards(parseMemoryCards(response.data.cards));
+    renderMemoryDecisions(parseMemoryDecisions(response.data.decisions));
   } catch {
-    renderMemory([]);
+    renderMemoryHealth({}, {});
+    renderMemoryCards([]);
+    renderMemoryDecisions([]);
     return;
   }
 }
@@ -518,7 +611,9 @@ async function refreshState(pullPrompts = true): Promise<void> {
   if (runtime.sessionId) {
     await refreshMemoryLab();
   } else {
-    renderMemory([]);
+    renderMemoryHealth({}, {});
+    renderMemoryCards([]);
+    renderMemoryDecisions([]);
   }
 }
 
@@ -809,9 +904,36 @@ memoryResetButton.addEventListener('click', () => {
     () => sendMessage('agent.memory.reset'),
     'Memory reset.',
     () => {
-      renderMemory([]);
+      renderMemoryHealth({}, {});
+      renderMemoryCards([]);
+      renderMemoryDecisions([]);
     },
   );
+});
+
+memoryNoStoreToggle.addEventListener('change', () => {
+  const enabled = memoryNoStoreToggle.checked;
+  setBanner('info', enabled ? 'Enabling no-store...' : 'Disabling no-store...');
+  void sendMessage('agent.memory.no_store', { enabled })
+    .then(async (response) => {
+      if (!response.ok) {
+        memoryNoStoreToggle.checked = !enabled;
+        const errorText = response.error ?? 'Failed to update no-store mode.';
+        setBanner('err', errorText);
+        pushToast('err', errorText);
+        return;
+      }
+
+      setBanner('ok', enabled ? 'No-store mode enabled.' : 'No-store mode disabled.');
+      pushToast('ok', enabled ? 'No-store mode enabled.' : 'No-store mode disabled.');
+      await refreshMemoryLab();
+    })
+    .catch((error) => {
+      memoryNoStoreToggle.checked = !enabled;
+      const message = error instanceof Error ? error.message : String(error);
+      setBanner('err', message);
+      pushToast('err', message);
+    });
 });
 
 actionDoneButton.addEventListener('click', () => {

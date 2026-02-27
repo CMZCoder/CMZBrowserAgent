@@ -7,6 +7,7 @@
     "build": "pnpm -r --filter ./engine --filter ./extension run build",
     "check": "pnpm -r --filter ./engine --filter ./extension run check",
     "test": "pnpm -r --filter ./engine --filter ./extension run test",
+    "memory:eval": "pnpm --filter @browser-agent/engine run memory:eval",
     "dev:engine": "pnpm --filter @browser-agent/engine run start",
     "build:extension": "pnpm --filter @browser-agent/extension run build"
   }

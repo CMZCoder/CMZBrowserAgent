@@ -89,4 +89,37 @@ describe('BrowserAgentStore pairing', () => {
 
     store.close();
   });
+
+  it('stores memory cards/settings and clears automation data as one unit', () => {
+    const dbPath = makeDbPath();
+    cleanupPaths.push(dbPath);
+
+    const store = new BrowserAgentStore(dbPath);
+    const settings = store.setMemoryNoStore(true);
+    expect(settings.noStore).toBe(true);
+
+    const card = store.upsertMemoryCard({
+      scope: 'durable_project',
+      title: 'Checkpoint',
+      summary: 'Validate webhook health before deploy.',
+      dedupeKey: 'dedupe-checkpoint-webhook-health',
+      sourceType: 'checkpoint',
+      payload: { note: 'webhook health' },
+      confidence: 0.8,
+      reliability: 0.75,
+    });
+    expect(card.id).toMatch(/^memory_/);
+
+    store.logMemoryDecision({
+      decisionType: 'policy_gate',
+      reason: 'policy_check_passed',
+    });
+
+    const cleared = store.clearMemoryAutomation();
+    expect(cleared.cardRows).toBe(1);
+    expect(cleared.decisionRows).toBe(1);
+    expect(store.listMemoryCards({ limit: 10 }).length).toBe(0);
+
+    store.close();
+  });
 });

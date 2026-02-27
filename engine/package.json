@@ -12,6 +12,7 @@
     "start": "tsx src/cli.ts start",
     "start:dist": "node dist/cli.js start",
     "cli": "tsx src/cli.ts",
+    "memory:eval": "tsx src/memory/eval-harness.ts",
     "check": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run"
   },
