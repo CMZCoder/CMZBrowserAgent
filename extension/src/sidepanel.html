@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BrowserAgent</title>
+    <link rel="stylesheet" href="./sidepanel.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <h1>BrowserAgent</h1>
+        <p id="connection-pill" class="pill pill-offline">Offline</p>
+      </header>
+      <p id="feedback-banner" class="banner banner-info">Ready.</p>
+
+      <section class="card">
+        <h2>1. Setup (one time)</h2>
+        <label>
+          Engine URL
+          <input id="engine-url" type="text" placeholder="http://127.0.0.1:8787" />
+        </label>
+        <div class="actions">
+          <button id="save-engine">Save</button>
+          <button id="pair-extension">Pair</button>
+          <button id="connect-ws">Connect WS</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>2. Live Session</h2>
+        <div class="actions actions-main">
+          <button id="session-start">Start Session</button>
+          <button id="session-attach" class="secondary">Attach Existing Session</button>
+          <button id="session-pause">Pause</button>
+          <button id="session-stop" class="secondary">Stop Session</button>
+        </div>
+        <p id="session-id" class="mono">Session: none</p>
+        <p id="confirmation-token" class="mono">Confirmation: unavailable</p>
+      </section>
+
+      <section class="card">
+        <h2>3. Steer</h2>
+        <label>
+          Message to Codex
+          <textarea id="prompt-content" rows="3" placeholder="Tell me what to do next. Example: open Vercel project settings."></textarea>
+        </label>
+        <div class="actions">
+          <button id="prompt-send">Steer + Send</button>
+          <button id="prompt-pull" class="secondary">Check Replies</button>
+          <button id="session-export" class="secondary">Export Session</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>4. Superpowers</h2>
+        <p class="section-note">One-click flows and quick operations.</p>
+        <div class="workflow-grid">
+          <button class="secondary workflow-btn" data-workflow-id="github_repo_actions">GitHub Actions (Repo)</button>
+          <button class="secondary workflow-btn" data-workflow-id="github_repo_secrets">GitHub Secrets (Repo)</button>
+          <button class="secondary workflow-btn" data-workflow-id="vercel_project_settings">Vercel Settings</button>
+          <button class="secondary workflow-btn" data-workflow-id="ops_control_room">Ops Control Room</button>
+        </div>
+        <div class="actions">
+          <button id="quick-snapshot" class="secondary">Snapshot</button>
+          <button id="quick-diagnostics" class="secondary">Extract Diagnostics</button>
+          <button id="quick-focus" class="secondary">Focus Automation Tab</button>
+        </div>
+      </section>
+
+      <section id="action-card" class="card action-card action-card-hidden">
+        <h2>Need your input</h2>
+        <p id="action-request-text" class="action-text">No manual action required.</p>
+        <label>
+          Reply (optional)
+          <input id="action-reply-input" type="text" placeholder="Short note for Codex..." />
+        </label>
+        <div class="actions">
+          <button id="action-done">I did it</button>
+          <button id="action-help" class="secondary">Need help</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Conversation</h2>
+        <div id="prompt-feed" class="feed">
+          <p class="feed-empty">No messages yet.</p>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>5. Command Timeline</h2>
+        <div id="command-feed" class="feed">
+          <p class="feed-empty">No commands yet.</p>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>6. Memory Lab</h2>
+        <div class="actions">
+          <button id="memory-refresh" class="secondary">Refresh Memory</button>
+          <button id="memory-reset" class="secondary">Reset Memory</button>
+        </div>
+        <div id="memory-feed" class="feed">
+          <p class="feed-empty">No learned patterns.</p>
+        </div>
+      </section>
+
+      <details class="card advanced">
+        <summary>Advanced (optional)</summary>
+        <section class="advanced-inner">
+          <div class="actions">
+            <button id="refresh-state" class="secondary">Refresh State</button>
+          </div>
+          <label>
+            Command JSON
+            <textarea id="command-json" rows="5" placeholder='{"type":"navigate","url":"https://github.com"}'></textarea>
+          </label>
+          <label>
+            Confirmation Token (for mutating commands)
+            <input id="confirmation-input" type="text" placeholder="optional" />
+          </label>
+          <button id="command-enqueue" class="secondary">Enqueue Command</button>
+        </section>
+      </details>
+
+      <section class="card">
+        <h2>Diagnostics (Raw)</h2>
+        <pre id="status-output">Loading state...</pre>
+      </section>
+      <div id="toast-host" class="toast-host" aria-live="polite"></div>
+    </main>
+
+    <script type="module" src="./sidepanel.js"></script>
+  </body>
+</html>

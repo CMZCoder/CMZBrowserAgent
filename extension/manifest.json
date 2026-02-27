@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "BrowserAgent Control Bridge",
+  "description": "Bridges local BrowserAgent engine with Chrome for guided multi-platform workflows.",
+  "version": "0.1.0",
+  "permissions": ["storage", "tabs", "scripting", "activeTab", "sidePanel"],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "https://github.com/*",
+    "https://*.github.com/*",
+    "https://vercel.com/*",
+    "https://*.vercel.com/*",
+    "https://dash.cloudflare.com/*",
+    "https://*.cloudflare.com/*",
+    "https://console.neon.tech/*",
+    "https://*.neon.tech/*",
+    "https://comerzio.ch/*",
+    "https://*.comerzio.ch/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "options_page": "options.html",
+  "action": {
+    "default_title": "BrowserAgent"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://github.com/*",
+        "https://*.github.com/*",
+        "https://vercel.com/*",
+        "https://*.vercel.com/*",
+        "https://dash.cloudflare.com/*",
+        "https://*.cloudflare.com/*",
+        "https://console.neon.tech/*",
+        "https://*.neon.tech/*",
+        "https://comerzio.ch/*",
+        "https://*.comerzio.ch/*"
+      ],
+      "js": ["content-script.runtime.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

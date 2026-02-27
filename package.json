@@ -1,0 +1,13 @@
+{
+  "name": "browser-agent-suite",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.26.1",
+  "scripts": {
+    "build": "pnpm -r --filter ./engine --filter ./extension run build",
+    "check": "pnpm -r --filter ./engine --filter ./extension run check",
+    "test": "pnpm -r --filter ./engine --filter ./extension run test",
+    "dev:engine": "pnpm --filter @browser-agent/engine run start",
+    "build:extension": "pnpm --filter @browser-agent/extension run build"
+  }
+}

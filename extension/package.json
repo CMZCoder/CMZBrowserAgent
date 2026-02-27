@@ -1,0 +1,17 @@
+{
+  "name": "@browser-agent/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "node -e \"import('node:fs').then(fs=>fs.rmSync('build',{recursive:true,force:true}))\"",
+    "build": "pnpm run clean && tsc -p tsconfig.json && node scripts/copy-assets.mjs",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.29",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.0"
+  }
+}
